@@ -5,6 +5,7 @@ import { Button, Spinner } from '../../components/ui'
 import { ru } from '../../i18n/ru'
 import { errorText } from '../../lib/errors'
 import type { ExerciseType } from '../../lib/exercises'
+import { primeSpeech } from '../../lib/speech'
 import { fetchAssignment, type PlayerItem } from './api'
 import { ChoiceExercise } from './ChoiceExercise'
 import { DictationExercise } from './DictationExercise'
@@ -25,6 +26,7 @@ export function StudentPlayer() {
   const [screen, setScreen] = useState<Screen>({ name: 'home' })
 
   useEffect(() => {
+    primeSpeech()
     void flushOutbox(token)
     const onOnline = () => void flushOutbox(token)
     window.addEventListener('online', onOnline)
