@@ -34,7 +34,7 @@ function DetailBody({ detail }: { detail: NonNullable<Awaited<ReturnType<typeof 
         {formatWhen(detail.assignment.completed_at)}
       </p>
       <div className="mt-6 grid gap-4">
-        {detail.exercises.map((exercise) => (
+        {detail.exercises.filter((exercise) => exercise.type !== 'pronounce').map((exercise) => (
           <section key={exercise.type} className="rounded-3xl border border-line bg-card p-4">
             <h2 className="font-serif text-2xl">{ru.exercises.names[exercise.type]}</h2>
             <ul className="mt-3 grid gap-2">

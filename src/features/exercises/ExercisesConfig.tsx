@@ -8,10 +8,8 @@ import { ru } from '../../i18n/ru'
 import { errorText } from '../../lib/errors'
 import {
   EXERCISE_TYPES,
-  defaultSettings,
   isExerciseAvailable,
   unavailableReason,
-  type ExerciseSettings,
   type ExerciseType,
 } from '../../lib/exercises'
 
@@ -21,9 +19,10 @@ export function ExercisesConfig({ lessonId }: { lessonId: string }) {
   const exercises = useQuery({ queryKey: ['exercises', lessonId], queryFn: () => listExercises(lessonId) })
   const items = useQuery({ queryKey: ['items', lessonId], queryFn: () => listItems(lessonId) })
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
-  const enabled = exercises.data ?? []
+  const listed = EXERCISE_TYPES.filter((type) => type !== 'pronounce')
+  const enabled = (exercises.data ?? []).filter((exercise) => exercise.type !== 'pronounce')
   const enabledTypes = new Set(enabled.map((exercise) => exercise.type))
-  const rest = EXERCISE_TYPES.filter((type) => !enabledTypes.has(type))
+  const rest = listed.filter((type) => !enabledTypes.has(type))
   const order = [...enabled.map((exercise) => exercise.type), ...rest]
 
   async function refresh() {
@@ -56,15 +55,6 @@ export function ExercisesConfig({ lessonId }: { lessonId: string }) {
     }
   }
 
-  async function saveSettings(type: ExerciseType, settings: ExerciseSettings) {
-    try {
-      await updateExercise(lessonId, type, { settings })
-      await refresh()
-    } catch (error) {
-      toast(errorText(error))
-    }
-  }
-
   return (
     <section className="mt-8">
       <h2 className="mb-3 font-serif text-3xl">{ru.exercises.title}</h2>
@@ -80,11 +70,9 @@ export function ExercisesConfig({ lessonId }: { lessonId: string }) {
                   key={type}
                   type={type}
                   enabled={Boolean(row)}
-                  settings={row?.settings ?? defaultSettings(type)}
                   available={available}
                   reason={reason}
                   onToggle={(on) => void toggle(type, on)}
-                  onSettings={(settings) => void saveSettings(type, settings)}
                 />
               )
             })}
@@ -98,19 +86,15 @@ export function ExercisesConfig({ lessonId }: { lessonId: string }) {
 function ExerciseRow({
   type,
   enabled,
-  settings,
   available,
   reason,
   onToggle,
-  onSettings,
 }: {
   type: ExerciseType
   enabled: boolean
-  settings: ExerciseSettings
   available: boolean
   reason: string | null
   onToggle: (on: boolean) => void
-  onSettings: (settings: ExerciseSettings) => void
 }) {
   const sortable = useSortable({ id: type, disabled: !enabled })
   return (
@@ -121,7 +105,7 @@ function ExerciseRow({
     >
       <label className="flex items-start gap-3">
         {enabled && (
-          <button type="button" className="cursor-grab text-muted" aria-label={ru.items.drag} {...sortable.attributes} {...sortable.listeners}>
+          <button type="button" className="text-muted" aria-label={ru.items.drag} {...sortable.attributes} {...sortable.listeners}>
             ⋮⋮
           </button>
         )}
@@ -135,7 +119,6 @@ function ExerciseRow({
         <span>
           <span className="font-semibold">{ru.exercises.names[type]}</span>
           <span className="mt-0.5 block text-sm text-muted">{ru.exercises.blurbs[type]}</span>
-          {type === 'pronounce' && <span className="mt-1 block text-sm text-warn">{ru.exercises.pronounceHint}</span>}
           {reason && (
             <span className="mt-1 block text-sm text-warn">
               {reason}. {ru.exercises.hidden}
@@ -143,77 +126,6 @@ function ExerciseRow({
           )}
         </span>
       </label>
-      {enabled && (
-        <details className="mt-2 text-sm">
-          <summary className="cursor-pointer text-muted">{ru.exercises.extra}</summary>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {(type === 'pick_word' || type === 'pick_image' || type === 'pick_translation') && (
-              <NumberSetting
-                label={ru.exercises.options}
-                value={settings.options ?? 4}
-                min={2}
-                max={6}
-                onChange={(options) => onSettings({ ...settings, options })}
-              />
-            )}
-            {type === 'match_pairs' && (
-              <NumberSetting
-                label={ru.exercises.pairs}
-                value={settings.pairsPerRound ?? 6}
-                min={3}
-                max={8}
-                onChange={(pairsPerRound) => onSettings({ ...settings, pairsPerRound })}
-              />
-            )}
-            {type === 'spell' && (
-              <NumberSetting
-                label={ru.exercises.extraLetters}
-                value={settings.extraLetters ?? 0}
-                min={0}
-                max={4}
-                onChange={(extraLetters) => onSettings({ ...settings, extraLetters })}
-              />
-            )}
-            {type === 'pronounce' && (
-              <NumberSetting
-                label={ru.exercises.tries}
-                value={settings.maxTries ?? 3}
-                min={1}
-                max={5}
-                onChange={(maxTries) => onSettings({ ...settings, maxTries })}
-              />
-            )}
-          </div>
-        </details>
-      )}
     </article>
-  )
-}
-
-function NumberSetting({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  onChange: (value: number) => void
-}) {
-  return (
-    <label className="block text-muted">
-      {label}
-      <input
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        className="mt-1 w-full rounded-xl border border-line px-3 py-2 text-ink"
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
   )
 }

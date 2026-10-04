@@ -63,11 +63,9 @@ export function ItemsList({ lessonId, locked }: { lessonId: string; locked: bool
       const position = (items.data?.at(-1)?.position ?? -1) + 1
       return insertItem(lessonId, term.trim(), position)
     },
-    onSuccess: async (item) => {
+    onSuccess: async () => {
       setTerm('')
       await refresh()
-      await enrich(item)
-      setPicker({ itemId: item.id, query: item.term })
     },
     onError: (error) => toast(errorText(error)),
   })
@@ -231,7 +229,7 @@ function ItemCard({
       <div className="space-y-2">
         <div className="flex gap-2">
           {!locked && (
-            <button type="button" className="cursor-grab px-1 text-muted" aria-label={ru.items.drag} {...attributes} {...listeners}>
+            <button type="button" className="px-1 text-muted" aria-label={ru.items.drag} {...attributes} {...listeners}>
               ⋮⋮
             </button>
           )}

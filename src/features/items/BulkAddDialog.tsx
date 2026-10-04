@@ -102,7 +102,7 @@ export function BulkAddDialog({
   }
 
   async function save() {
-    const ready = rows.filter((row) => row.selected && !row.itemId)
+    const ready = rows.filter((row) => !row.itemId && row.status !== 'loading')
     const failed: ReviewRow[] = []
     if (ready.length === 0 && rows.every((row) => row.itemId)) {
       onSaved()
@@ -161,7 +161,7 @@ export function BulkAddDialog({
   }
 
   const pickerRow = rows.find((row) => row.key === pickerKey)
-  const addable = rows.filter((row) => row.selected).length
+  const addable = rows.filter((row) => !row.itemId && row.status !== 'loading').length
 
   return (
     <>
@@ -303,7 +303,6 @@ function BulkReviewTable({
           ))}
         </p>
       )}
-      {!row.selected && row.status === 'ready' && <p className="mt-2 text-sm text-warn">{ru.bulk.noPicture}</p>}
       {row.error && <p className="mt-2 text-sm text-bad">{row.error}</p>}
       <div className="mt-2 flex gap-2 overflow-x-auto">
         {row.candidates.map((candidate) => (

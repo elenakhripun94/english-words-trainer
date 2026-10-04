@@ -1,5 +1,5 @@
 export const ru = {
-  appName: 'Слова',
+  appName: 'Тренажёр для изучения лексики',
   close: 'Закрыть',
   save: 'Сохранить',
   cancel: 'Отмена',
@@ -41,6 +41,7 @@ export const ru = {
     remove: 'Удалить урок',
     removeConfirm: 'Удалить урок вместе со словами и результатами?',
     open: 'Открыть',
+    saved: 'Урок сохранён',
     notFound: 'Урок не найден',
     status: { draft: 'Черновик', published: 'Опубликован', archived: 'В архиве' },
     locked:

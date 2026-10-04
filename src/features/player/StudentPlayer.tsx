@@ -45,7 +45,9 @@ export function StudentPlayer() {
   }
   if (!assignment.data) return null
   const data = assignment.data
-  const visible = data.exercises.filter((exercise) => exercise.available).sort((a, b) => a.position - b.position)
+  const visible = data.exercises
+    .filter((exercise) => exercise.available && exercise.type !== 'pronounce')
+    .sort((a, b) => a.position - b.position)
 
   function itemsFor(onlyIds?: string[]) {
     if (!onlyIds) return data.items
@@ -62,10 +64,8 @@ export function StudentPlayer() {
     <PlayerFrame>
       {screen.name === 'home' && (
         <div>
-          <p className="text-muted">{ru.player.hello}, {data.studentName}!</p>
-          <h1 className="font-serif text-4xl">{data.lesson.title}</h1>
-          <p className="text-muted">{[data.lesson.topic, data.lesson.level].filter(Boolean).join(' · ')}</p>
-          {data.lesson.description && <p className="mt-2">{data.lesson.description}</p>}
+          <p className="font-serif text-3xl">{data.studentName}</p>
+          <h1 className="mt-2 font-serif text-4xl">{ru.appName}</h1>
           <ul className="mt-5 grid gap-2">
             {visible.map((exercise) => {
               const done = Boolean(progressOf(exercise.type)?.completed_at)

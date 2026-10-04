@@ -39,6 +39,24 @@ select {
   font: inherit;
 }
 
+button,
+a,
+label,
+summary,
+select,
+[role='button'],
+input[type='checkbox'],
+input[type='radio'],
+input[type='file'] {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  cursor: not-allowed;
+}
+
 .card-back {
   background-color: #0f6e56;
   background-image: radial-gradient(circle, #d7f3e8 1px, transparent 1.5px);

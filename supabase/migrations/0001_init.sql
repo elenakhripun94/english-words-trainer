@@ -63,7 +63,7 @@ create table assignments (
   id uuid primary key default gen_random_uuid(),
   lesson_id uuid not null references lessons (id) on delete cascade,
   student_id uuid not null references students (id) on delete cascade,
-  token text not null unique default encode(gen_random_bytes(16), 'hex'),
+  token text not null unique default encode(extensions.gen_random_bytes(16), 'hex'),
   revoked boolean not null default false,
   opened_at timestamptz,
   completed_at timestamptz,
@@ -475,7 +475,8 @@ begin
   end if;
 
   v_correct := case
-    when p_skipped or p_exercise = 'memorize' then null
+    when p_skipped then null
+    when p_exercise = 'memorize' then true
     when p_exercise in ('pick_word', 'pick_image', 'pick_translation', 'match_pairs')
       then p_chosen_item_id is not null and p_item_id = p_chosen_item_id
     else normalize_answer(p_answer_text) = normalize_answer(v_term)
@@ -601,6 +602,7 @@ with base as (
         order by att.item_id, att.created_at asc, att.id asc
       ) firsts
       where firsts.is_correct is true
+         or (le.type = 'memorize' and firsts.is_correct is distinct from false)
     ) as first_try_correct,
     (
       select count(*)

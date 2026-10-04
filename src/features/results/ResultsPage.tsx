@@ -77,7 +77,10 @@ export function ResultsPage() {
 function uniqueExercises(rows: ResultRow[]): ExerciseType[] {
   const map = new Map<ExerciseType, number>()
   for (const row of rows) map.set(row.exercise, row.exercise_position)
-  return [...map.entries()].sort((a, b) => a[1] - b[1]).map(([type]) => type)
+  return [...map.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .map(([type]) => type)
+    .filter((type) => type !== 'pronounce')
 }
 
 function uniqueStudents(rows: ResultRow[]) {

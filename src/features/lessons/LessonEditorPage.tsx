@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { getLesson } from '../../api/db'
 import { TeacherShell } from '../../components/Shell'
-import { Spinner } from '../../components/ui'
+import { Button, Spinner } from '../../components/ui'
 import { ru } from '../../i18n/ru'
 import { ExercisesConfig } from '../exercises/ExercisesConfig'
 import { ItemsList } from '../items/ItemsList'
-import { LessonMetaForm } from './LessonMetaForm'
+import { LessonMetaForm, lessonMetaFormId } from './LessonMetaForm'
 
 export function LessonEditorPage() {
   const { id = '' } = useParams()
@@ -35,6 +35,11 @@ export function LessonEditorPage() {
           <LessonMetaForm key={`${lesson.data.id}:${lesson.data.updated_at}`} lesson={lesson.data} />
           <ItemsList lessonId={id} locked={lesson.data.status !== 'draft'} />
           <ExercisesConfig lessonId={id} />
+          <div className="mt-8">
+            <Button type="submit" form={lessonMetaFormId} className="w-full sm:w-auto">
+              {ru.save}
+            </Button>
+          </div>
         </>
       )}
     </TeacherShell>
