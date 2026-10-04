@@ -155,6 +155,7 @@ export const ru = {
   },
   player: {
     hello: 'Привет',
+    title: 'Тренажёр для лексики',
     lesson: 'Урок',
     start: 'Начать',
     continue: 'Продолжить',

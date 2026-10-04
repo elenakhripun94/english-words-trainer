@@ -65,7 +65,7 @@ export function StudentPlayer() {
       {screen.name === 'home' && (
         <div>
           <p className="font-serif text-3xl">{data.studentName}</p>
-          <h1 className="mt-2 font-serif text-4xl">{ru.appName}</h1>
+          <h1 className="mt-2 font-serif text-4xl">{ru.player.title}</h1>
           <ul className="mt-5 grid gap-2">
             {visible.map((exercise) => {
               const done = Boolean(progressOf(exercise.type)?.completed_at)
