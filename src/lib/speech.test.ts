@@ -92,4 +92,51 @@ describe('playTerm', () => {
     await playTerm('beach', null)
     expect(speak.mock.calls[0]?.[0].voice).toBe(system)
   })
+
+  it('does not say an interrupted word again in the browser voice', async () => {
+    const speak = stubSpeech()
+    const players: Array<{ onerror: (() => void) | null; onended: (() => void) | null }> = []
+    vi.stubGlobal(
+      'Audio',
+      class {
+        onerror: (() => void) | null = null
+        onended: (() => void) | null = null
+        constructor() {
+          players.push(this)
+        }
+        play() {
+          return Promise.resolve()
+        }
+        pause() {
+          // Stopping a real element with src = '' fires an error event.
+          this.onerror?.()
+        }
+      },
+    )
+    const first = playTerm('apple', 'https://example.com/apple.wav')
+    const second = playTerm('banana', 'https://example.com/banana.wav')
+    players[1].onended?.()
+    await Promise.all([first, second])
+    expect(speak).not.toHaveBeenCalled()
+  })
+
+  it('does not repeat a cut-off utterance with another voice', async () => {
+    const voice = { lang: 'en-US', localService: true, name: 'Samantha' }
+    const speak = vi.fn((utterance: FakeUtterance & { onerror: ((event: { error: string }) => void) | null }) => {
+      if (speak.mock.calls.length === 1) utterance.onerror?.({ error: 'interrupted' })
+      else utterance.onend?.()
+    })
+    vi.stubGlobal('speechSynthesis', {
+      getVoices: () => [voice],
+      cancel: vi.fn(),
+      speak,
+      speaking: false,
+      pending: false,
+      paused: false,
+      addEventListener: vi.fn(),
+    })
+    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance)
+    await playTerm('apple', null)
+    expect(speak).toHaveBeenCalledOnce()
+  })
 })

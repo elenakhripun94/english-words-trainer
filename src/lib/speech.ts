@@ -1,5 +1,9 @@
 let currentAudio: HTMLAudioElement | null = null
 let currentUtterance: SpeechSynthesisUtterance | null = null
+// Every new sound gets a number. A sound that was cut off must not fall back to the browser voice
+// or retry with another voice: that made one word sound several times in different voices.
+let generation = 0
+const stopped = new WeakSet<HTMLAudioElement>()
 
 export function primeSpeech(): void {
   const synth = window.speechSynthesis
@@ -15,29 +19,39 @@ export async function playTerm(
   audioUrl?: string | null,
   options?: { rate?: number },
 ): Promise<void> {
-  stopAudio()
+  const mine = interrupt()
   const rate = options?.rate ?? 1
   if (audioUrl && rate === 1) {
     const played = await playUrl(audioUrl)
-    if (played) return
+    if (played || mine !== generation) return
   }
   await speak(term, rate)
 }
 
 /** Reads an instruction aloud in Russian for a child who cannot read yet. */
 export function sayRu(text: string): Promise<void> {
-  stopAudio()
+  interrupt()
   return speak(text, 1, 'ru')
 }
 
 export function stopSpeech(): void {
+  interrupt()
+}
+
+/** Silences whatever is playing and starts a new generation. */
+function interrupt() {
+  generation += 1
   stopAudio()
-  window.speechSynthesis?.cancel()
+  const synth = window.speechSynthesis
+  if (synth?.speaking || synth?.pending) synth.cancel()
+  currentUtterance = null
+  return generation
 }
 
 export function speak(term: string, rate = 1, language = 'en'): Promise<void> {
   const synth = window.speechSynthesis
   if (!synth) return Promise.resolve()
+  const mine = generation
 
   return new Promise((resolve) => {
     let settled = false
@@ -49,6 +63,10 @@ export function speak(term: string, rate = 1, language = 'en'): Promise<void> {
 
     let waitedForVoices = false
     const start = (voice: SpeechSynthesisVoice | undefined, allowRetry: boolean) => {
+      if (mine !== generation) {
+        finish()
+        return
+      }
       const utterance = new SpeechSynthesisUtterance(term)
       currentUtterance = utterance
       utterance.lang = voice?.lang ?? (language === 'ru' ? 'ru-RU' : 'en-US')
@@ -59,8 +77,11 @@ export function speak(term: string, rate = 1, language = 'en'): Promise<void> {
         if (currentUtterance === utterance) currentUtterance = null
         finish()
       }
-      utterance.onerror = () => {
-        if (allowRetry && voice) {
+      utterance.onerror = (event) => {
+        if (currentUtterance === utterance) currentUtterance = null
+        // Cut off on purpose: say nothing more.
+        const cut = event?.error === 'interrupted' || event?.error === 'canceled'
+        if (allowRetry && voice && !cut && mine === generation) {
           start(undefined, false)
           return
         }
@@ -73,7 +94,7 @@ export function speak(term: string, rate = 1, language = 'en'): Promise<void> {
         waitedForVoices = true
         const onVoices = () => {
           synth.removeEventListener('voiceschanged', onVoices)
-          if (settled || synth.speaking) return
+          if (settled || synth.speaking || mine !== generation) return
           start(pickVoice(synth.getVoices(), language), false)
         }
         synth.addEventListener('voiceschanged', onVoices)
@@ -119,14 +140,17 @@ function playUrl(url: string): Promise<boolean> {
       if (!ok && currentAudio === audio) currentAudio = null
       resolve(ok)
     }
-    audio.onerror = () => finish(false)
+    // Stopping a sound on purpose fires error/abort too; that is not a reason to fall back.
+    const failed = () => finish(stopped.has(audio))
+    audio.onerror = failed
     audio.onended = () => finish(true)
-    void audio.play().catch(() => finish(false))
+    void audio.play().catch(failed)
   })
 }
 
 function stopAudio() {
   if (!currentAudio) return
+  stopped.add(currentAudio)
   currentAudio.pause()
   currentAudio.src = ''
   currentAudio = null
