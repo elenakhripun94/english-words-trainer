@@ -14,9 +14,20 @@ export type VoicingState = {
   total: number
   pending: ReadonlySet<string>
   failed: ReadonlySet<string>
+  /** 'webgpu' is fast; 'wasm' is the CPU fallback. */
+  device: 'webgpu' | 'wasm' | null
+  lastError: string | null
 }
 
-let state: VoicingState = { model: 'idle', loaded: 0, total: 0, pending: new Set(), failed: new Set() }
+let state: VoicingState = {
+  model: 'idle',
+  loaded: 0,
+  total: 0,
+  pending: new Set(),
+  failed: new Set(),
+  device: null,
+  lastError: null,
+}
 const listeners = new Set<() => void>()
 const voicedListeners = new Set<(itemId: string) => void>()
 
@@ -46,8 +57,10 @@ let worker: Worker | null = null
 let nextId = 0
 const waiting = new Map<number, { resolve: (value: { samples: Float32Array; rate: number }) => void; reject: (error: Error) => void }>()
 
-// The worker must show signs of life (download progress or a result) at least this often.
-const SILENCE_LIMIT_MS = 60_000
+// The worker must show signs of life at least this often. Preparing the model after the download
+// sends nothing for a while, and Safari is slow at it, so loading gets more time than one word.
+const WORD_LIMIT_MS = 60_000
+const LOADING_LIMIT_MS = 5 * 60_000
 let watchdog: number | null = null
 
 function stopWatchdog() {
@@ -58,17 +71,18 @@ function stopWatchdog() {
 function feedWatchdog() {
   stopWatchdog()
   if (waiting.size === 0) return
-  watchdog = window.setTimeout(() => restartWorker('tts_timeout'), SILENCE_LIMIT_MS)
+  watchdog = window.setTimeout(() => restartWorker('tts_timeout'), state.model === 'ready' ? WORD_LIMIT_MS : LOADING_LIMIT_MS)
 }
 
 /** Fails every waiting request and drops the worker; the next request starts a fresh one. */
 function restartWorker(reason: string) {
   stopWatchdog()
+  console.error('Voicing stopped:', reason)
   for (const request of waiting.values()) request.reject(new Error(reason))
   waiting.clear()
   worker?.terminate()
   worker = null
-  update({ model: 'error' })
+  update({ model: 'error', lastError: reason })
 }
 
 function getWorker() {
@@ -78,19 +92,24 @@ function getWorker() {
     const message = event.data
     feedWatchdog()
     if (message.type === 'progress') update({ loaded: message.loaded, total: message.total })
-    else if (message.type === 'ready') update({ model: 'ready' })
+    else if (message.type === 'ready') update({ model: 'ready', device: message.device, lastError: null })
+    else if (message.type === 'fallback') {
+      console.warn('Voicing on the GPU failed, switching to the CPU:', message.reason)
+      update({ loaded: 0, total: 0 })
+    }
     else {
       const request = waiting.get(message.id)
       waiting.delete(message.id)
       feedWatchdog()
       if (message.type === 'done') request?.resolve({ samples: message.samples, rate: message.rate })
       else {
-        if (state.model !== 'ready') update({ model: 'error' })
+        console.error('Voicing failed:', message.message)
+        update({ lastError: message.message, ...(state.model !== 'ready' && { model: 'error' as const }) })
         request?.reject(new Error(message.message))
       }
     }
   }
-  worker.onerror = () => restartWorker('tts_worker_failed')
+  worker.onerror = (event) => restartWorker(event.message || 'tts_worker_failed')
   return worker
 }
 

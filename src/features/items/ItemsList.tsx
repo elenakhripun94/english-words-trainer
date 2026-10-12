@@ -192,7 +192,12 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
           {voicing.total > 0 && `: ${Math.round(voicing.loaded / 1_000_000)} из ${Math.round(voicing.total / 1_000_000)} МБ`}
         </p>
       )}
-      {voicing.model === 'error' && <p className="mb-3 rounded-2xl bg-warn-bg px-4 py-3 text-sm text-warn">{ru.items.modelError}</p>}
+      {voicing.model === 'error' && (
+        <p className="mb-3 rounded-2xl bg-warn-bg px-4 py-3 text-sm text-warn">
+          {ru.items.modelError}
+          {voicing.lastError && <span className="mt-1 block font-mono text-xs">{voicing.lastError}</span>}
+        </p>
+      )}
       <form
         className="mb-4 flex gap-2"
         onSubmit={(event) => {
@@ -222,6 +227,7 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
                 finding={finding.has(item.id)}
                 voicing={voicing.pending.has(item.id)}
                 voiceFailed={voicing.failed.has(item.id)}
+                voiceError={voicing.lastError}
                 onVoice={(choice) => void chooseVoice(item, choice)}
                 onRevoice={() => voiceItems(lessonId, [item], voiceOf(item.audio_source) ?? defaultVoice)}
                 hit={hits[item.id] ?? null}
@@ -276,6 +282,7 @@ function ItemCard({
   finding,
   voicing,
   voiceFailed,
+  voiceError,
   onVoice,
   onRevoice,
   hit,
@@ -289,6 +296,7 @@ function ItemCard({
   finding: boolean
   voicing: boolean
   voiceFailed: boolean
+  voiceError: string | null
   onVoice: (choice: VoiceId | 'dictionary') => void
   onRevoice: () => void
   hit: DictionaryHit | null
@@ -403,7 +411,11 @@ function ItemCard({
             </Button>
           )}
           {voicing && <span className="text-sm text-muted">{ru.items.voicing}</span>}
-          {voiceFailed && !voicing && <span className="text-sm text-bad">{ru.items.voiceFailed}</span>}
+          {voiceFailed && !voicing && (
+            <span className="text-sm text-bad" title={voiceError ?? undefined}>
+              {ru.items.voiceFailed}
+            </span>
+          )}
           {item.phonetic && <span className="text-sm text-muted">{item.phonetic}</span>}
           <Button variant="ghost" className="px-2 py-1 text-sm" onClick={onCheck} disabled={checking}>
             {ru.items.check}
