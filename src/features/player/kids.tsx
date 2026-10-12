@@ -222,7 +222,9 @@ export function Draggable({
       style={offset ? { transform: `translate(${offset.x}px, ${offset.y}px) scale(1.05)` } : undefined}
       onPointerDown={(event) => {
         if (disabled) return
-        event.currentTarget.setPointerCapture(event.pointerId)
+        if (typeof event.currentTarget.setPointerCapture === 'function') {
+          event.currentTarget.setPointerCapture(event.pointerId)
+        }
         start.current = { x: event.clientX, y: event.clientY }
         setOffset({ x: 0, y: 0 })
       }}
