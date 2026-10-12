@@ -189,7 +189,7 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
       {voicing.model === 'loading' && voicing.pending.size > 0 && (
         <p className="mb-3 rounded-2xl bg-accent-soft px-4 py-3 text-sm text-accent">
           {ru.items.modelLoading}
-          {voicing.total > 0 && `: ${Math.round((100 * voicing.loaded) / voicing.total)}%`}
+          {voicing.total > 0 && `: ${Math.round(voicing.loaded / 1_000_000)} из ${Math.round(voicing.total / 1_000_000)} МБ`}
         </p>
       )}
       {voicing.model === 'error' && <p className="mb-3 rounded-2xl bg-warn-bg px-4 py-3 text-sm text-warn">{ru.items.modelError}</p>}

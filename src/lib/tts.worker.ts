@@ -4,35 +4,48 @@ import { KokoroTTS } from 'kokoro-js'
 
 export type TtsRequest = { id: number; text: string; voice: string }
 export type TtsMessage =
+  /** Hugging Face often sends the model without its size, so total is the expected size of the files. */
   | { type: 'progress'; loaded: number; total: number }
   | { type: 'ready' }
   | { type: 'done'; id: number; samples: Float32Array; rate: number }
   | { type: 'error'; id: number; message: string }
 
 const MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX'
-const files = new Map<string, { loaded: number; total: number }>()
+// On the GPU a word takes a fraction of a second; on the CPU in one thread it takes several seconds.
+const SETUPS = {
+  webgpu: { device: 'webgpu', dtype: 'fp32', bytes: 326_000_000 },
+  wasm: { device: 'wasm', dtype: 'q8', bytes: 92_500_000 },
+} as const
+const files = new Map<string, number>()
 let model: Promise<KokoroTTS> | null = null
+
+async function pickSetup() {
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu
+  try {
+    if (gpu && (await gpu.requestAdapter())) return SETUPS.webgpu
+  } catch {
+    // No usable GPU.
+  }
+  return SETUPS.wasm
+}
 
 function post(message: TtsMessage, transfer: Transferable[] = []) {
   self.postMessage(message, transfer)
 }
 
 function load() {
-  model ??= KokoroTTS.from_pretrained(MODEL, {
-    dtype: 'q8',
-    device: 'wasm',
-    progress_callback: (event: { status: string; file?: string; loaded?: number; total?: number }) => {
-      if (event.status !== 'progress' || !event.file || !event.total) return
-      files.set(event.file, { loaded: event.loaded ?? 0, total: event.total })
-      let loaded = 0
-      let total = 0
-      for (const file of files.values()) {
-        loaded += file.loaded
-        total += file.total
-      }
-      post({ type: 'progress', loaded, total })
-    },
-  }).then((tts) => {
+  model ??= pickSetup().then((setup) =>
+    KokoroTTS.from_pretrained(MODEL, {
+      dtype: setup.dtype,
+      device: setup.device,
+      progress_callback: (event: { status: string; file?: string; loaded?: number }) => {
+        if (event.status !== 'progress' || !event.file) return
+        files.set(event.file, event.loaded ?? 0)
+        const loaded = [...files.values()].reduce((sum, bytes) => sum + bytes, 0)
+        post({ type: 'progress', loaded, total: Math.max(setup.bytes, loaded) })
+      },
+    }),
+  ).then((tts) => {
     post({ type: 'ready' })
     return tts
   })

@@ -46,16 +46,43 @@ let worker: Worker | null = null
 let nextId = 0
 const waiting = new Map<number, { resolve: (value: { samples: Float32Array; rate: number }) => void; reject: (error: Error) => void }>()
 
+// The worker must show signs of life (download progress or a result) at least this often.
+const SILENCE_LIMIT_MS = 60_000
+let watchdog: number | null = null
+
+function stopWatchdog() {
+  if (watchdog !== null) window.clearTimeout(watchdog)
+  watchdog = null
+}
+
+function feedWatchdog() {
+  stopWatchdog()
+  if (waiting.size === 0) return
+  watchdog = window.setTimeout(() => restartWorker('tts_timeout'), SILENCE_LIMIT_MS)
+}
+
+/** Fails every waiting request and drops the worker; the next request starts a fresh one. */
+function restartWorker(reason: string) {
+  stopWatchdog()
+  for (const request of waiting.values()) request.reject(new Error(reason))
+  waiting.clear()
+  worker?.terminate()
+  worker = null
+  update({ model: 'error' })
+}
+
 function getWorker() {
   if (worker) return worker
   worker = new Worker(new URL('./tts.worker.ts', import.meta.url), { type: 'module' })
   worker.onmessage = (event: MessageEvent<TtsMessage>) => {
     const message = event.data
+    feedWatchdog()
     if (message.type === 'progress') update({ loaded: message.loaded, total: message.total })
     else if (message.type === 'ready') update({ model: 'ready' })
     else {
       const request = waiting.get(message.id)
       waiting.delete(message.id)
+      feedWatchdog()
       if (message.type === 'done') request?.resolve({ samples: message.samples, rate: message.rate })
       else {
         if (state.model !== 'ready') update({ model: 'error' })
@@ -63,13 +90,7 @@ function getWorker() {
       }
     }
   }
-  worker.onerror = () => {
-    for (const request of waiting.values()) request.reject(new Error('tts_worker_failed'))
-    waiting.clear()
-    worker?.terminate()
-    worker = null
-    update({ model: 'error' })
-  }
+  worker.onerror = () => restartWorker('tts_worker_failed')
   return worker
 }
 
@@ -79,6 +100,7 @@ function synthesize(text: string, voice: VoiceId) {
   return new Promise<{ samples: Float32Array; rate: number }>((resolve, reject) => {
     waiting.set(id, { resolve, reject })
     getWorker().postMessage({ id, text, voice } satisfies TtsRequest)
+    feedWatchdog()
   })
 }
 
