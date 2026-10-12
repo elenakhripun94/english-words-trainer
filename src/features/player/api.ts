@@ -1,4 +1,5 @@
 import type { ExerciseSettings, ExerciseType } from '../../lib/exercises'
+import { resolveAudioUrl } from '../../lib/audio'
 import { resolveImageUrl } from '../../lib/images'
 import type { AnswerPayload } from '../../lib/outbox'
 import { getSupabase } from '../../lib/supabase'
@@ -65,7 +66,7 @@ export async function fetchAssignment(token: string): Promise<PlayerAssignment> 
       id: item.id,
       term: item.term,
       phonetic: item.phonetic,
-      audioUrl: item.audio_url,
+      audioUrl: resolveAudioUrl(item.audio_url),
       imageUrl: resolveImageUrl(item.image_url),
       translation: item.translation,
       category: item.category ?? null,

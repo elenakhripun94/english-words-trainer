@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { DictionaryHit } from '../../lib/dictionary'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -9,18 +9,21 @@ import {
   insertItem,
   listItems,
   reorderItems,
+  setDictionaryAudioIfEmpty,
   updateItem,
   type LessonItem,
 } from '../../api/db'
 import { useToast } from '../../components/Toast'
 import { Button } from '../../components/ui'
 import { ru } from '../../i18n/ru'
+import { VOICES, preferredVoice, releaseAudio, resolveAudioUrl, setPreferredVoice, voiceOf, type VoiceId } from '../../lib/audio'
 import { CATEGORIES } from '../../lib/categories'
 import { lookupTerm } from '../../lib/dictionary'
 import { errorText } from '../../lib/errors'
 import { resolveImageUrl, saveRemoteImage, suggestImages, uploadLessonImage, type ImageCandidate } from '../../lib/images'
 import { playTerm } from '../../lib/speech'
 import { suggestTranslation } from '../../lib/translate'
+import { onVoiced, useVoicing, voiceItems } from '../../lib/voicing'
 import { BulkAddDialog } from './BulkAddDialog'
 import { ImagePickerDialog } from './ImagePickerDialog'
 import { WordCheck } from './WordCheck'
@@ -35,9 +38,13 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
   const [checking, setChecking] = useState<string | null>(null)
   const [finding, setFinding] = useState<Set<string>>(new Set())
   const [hits, setHits] = useState<Record<string, DictionaryHit>>({})
+  const [defaultVoice, setDefaultVoice] = useState<VoiceId>(preferredVoice)
+  const voicing = useVoicing()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['items', lessonId] })
+
+  useEffect(() => onVoiced(() => void queryClient.invalidateQueries({ queryKey: ['items', lessonId] })), [lessonId, queryClient])
 
   async function enrich(item: LessonItem) {
     setChecking(item.id)
@@ -49,9 +56,10 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
       if (hit) setHits((current) => ({ ...current, [item.id]: hit }))
       await updateItem(item.id, {
         phonetic: hit?.phonetic ?? null,
-        audio_url: hit?.audioUrl ?? null,
         translation: item.translation || translation,
       })
+      // A fallback until Kokoro is done; never replaces a generated voice.
+      if (hit?.audioUrl) await setDictionaryAudioIfEmpty(item.id, hit.audioUrl)
       await refresh()
     } catch (error) {
       toast(errorText(error))
@@ -88,6 +96,7 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
     onSuccess: async (item) => {
       setTerm('')
       await refresh()
+      voiceItems(lessonId, [item], defaultVoice)
       void enrich(item)
       void autoImage(item)
     },
@@ -108,6 +117,27 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
       await refresh()
     }
   }
+
+  async function chooseVoice(item: LessonItem, choice: VoiceId | 'dictionary') {
+    if (choice !== 'dictionary') {
+      voiceItems(lessonId, [item], choice)
+      return
+    }
+    const hit = await lookupTerm(item.term).catch(() => null)
+    if (!hit?.audioUrl) {
+      toast(ru.items.noDictionaryAudio)
+      return
+    }
+    try {
+      await updateItem(item.id, { audio_url: hit.audioUrl, audio_source: 'dictionary' })
+      await releaseAudio([item.audio_url])
+      await refresh()
+    } catch (error) {
+      toast(errorText(error))
+    }
+  }
+
+  const unvoiced = (items.data ?? []).filter((item) => !voiceOf(item.audio_source) && !voicing.pending.has(item.id))
 
   async function pickImage(candidate: ImageCandidate) {
     if (!picker) return
@@ -131,6 +161,38 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
           {ru.items.bulk}
         </Button>
       </div>
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-muted">
+        <label>
+          {ru.items.voiceDefault}
+          <select
+            className="ml-2 rounded-lg border border-line bg-white px-2 py-1 text-ink"
+            value={defaultVoice}
+            onChange={(event) => {
+              const voice = event.target.value as VoiceId
+              setDefaultVoice(voice)
+              setPreferredVoice(voice)
+            }}
+          >
+            {VOICES.map((voice) => (
+              <option key={voice.id} value={voice.id}>
+                {voice.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {unvoiced.length > 0 && (
+          <Button variant="ghost" className="px-2 py-1 text-sm" onClick={() => voiceItems(lessonId, unvoiced, defaultVoice)}>
+            {ru.items.voiceAll} ({unvoiced.length})
+          </Button>
+        )}
+      </div>
+      {voicing.model === 'loading' && voicing.pending.size > 0 && (
+        <p className="mb-3 rounded-2xl bg-accent-soft px-4 py-3 text-sm text-accent">
+          {ru.items.modelLoading}
+          {voicing.total > 0 && `: ${Math.round((100 * voicing.loaded) / voicing.total)}%`}
+        </p>
+      )}
+      {voicing.model === 'error' && <p className="mb-3 rounded-2xl bg-warn-bg px-4 py-3 text-sm text-warn">{ru.items.modelError}</p>}
       <form
         className="mb-4 flex gap-2"
         onSubmit={(event) => {
@@ -158,6 +220,10 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
                 item={item}
                 checking={checking === item.id}
                 finding={finding.has(item.id)}
+                voicing={voicing.pending.has(item.id)}
+                voiceFailed={voicing.failed.has(item.id)}
+                onVoice={(choice) => void chooseVoice(item, choice)}
+                onRevoice={() => voiceItems(lessonId, [item], voiceOf(item.audio_source) ?? defaultVoice)}
                 hit={hits[item.id] ?? null}
                 onDelete={async () => {
                   if (published && !window.confirm(ru.items.removeConfirm)) return
@@ -172,6 +238,7 @@ export function ItemsList({ lessonId, published }: { lessonId: string; published
                   try {
                     await updateItem(item.id, patch)
                     await refresh()
+                    if (patch.term) voiceItems(lessonId, [{ id: item.id, term: patch.term }], voiceOf(item.audio_source) ?? defaultVoice)
                   } catch (error) {
                     toast(errorText(error))
                   }
@@ -207,6 +274,10 @@ function ItemCard({
   item,
   checking,
   finding,
+  voicing,
+  voiceFailed,
+  onVoice,
+  onRevoice,
   hit,
   onDelete,
   onSave,
@@ -216,6 +287,10 @@ function ItemCard({
   item: LessonItem
   checking: boolean
   finding: boolean
+  voicing: boolean
+  voiceFailed: boolean
+  onVoice: (choice: VoiceId | 'dictionary') => void
+  onRevoice: () => void
   hit: DictionaryHit | null
   onDelete: () => void
   onSave: (patch: Partial<LessonItem>) => Promise<void>
@@ -266,7 +341,7 @@ function ItemCard({
               if (next && next !== item.term) void onSave({ term: next })
             }}
           />
-          <Button variant="ghost" aria-label={ru.items.play} onClick={() => void playTerm(item.term, item.audio_url)}>
+          <Button variant="ghost" aria-label={ru.items.play} onClick={() => void playTerm(item.term, resolveAudioUrl(item.audio_url))}>
             ▶
           </Button>
           <Button variant="danger" aria-label={ru.items.remove} onClick={onDelete}>
@@ -305,6 +380,30 @@ function ItemCard({
           </label>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm text-muted">
+            {ru.items.voice}
+            <select
+              className="ml-2 rounded-lg border border-line bg-white px-2 py-1 text-ink"
+              value={voiceOf(item.audio_source) ?? (item.audio_source === 'dictionary' ? 'dictionary' : '')}
+              disabled={voicing}
+              onChange={(event) => event.target.value && onVoice(event.target.value as VoiceId | 'dictionary')}
+            >
+              {!item.audio_url && <option value="">{ru.items.voiceBrowser}</option>}
+              {VOICES.map((voice) => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.label}
+                </option>
+              ))}
+              <option value="dictionary">{ru.items.voiceDictionary}</option>
+            </select>
+          </label>
+          {!voicing && (
+            <Button variant="ghost" className="px-2 py-1 text-sm" aria-label={ru.items.revoice} title={ru.items.revoice} onClick={onRevoice}>
+              ↻
+            </Button>
+          )}
+          {voicing && <span className="text-sm text-muted">{ru.items.voicing}</span>}
+          {voiceFailed && !voicing && <span className="text-sm text-bad">{ru.items.voiceFailed}</span>}
           {item.phonetic && <span className="text-sm text-muted">{item.phonetic}</span>}
           <Button variant="ghost" className="px-2 py-1 text-sm" onClick={onCheck} disabled={checking}>
             {ru.items.check}
@@ -318,7 +417,7 @@ function ItemCard({
             hit={hit}
             pending={checking}
             term={item.term}
-            audioUrl={item.audio_url}
+            audioUrl={resolveAudioUrl(item.audio_url)}
             onSuggest={(word) => void onSave({ term: word })}
           />
         )}

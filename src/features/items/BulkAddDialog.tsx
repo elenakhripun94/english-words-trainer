@@ -8,6 +8,7 @@ import { saveRemoteImage, suggestImages, type ImageCandidate } from '../../lib/i
 import { pool } from '../../lib/pool'
 import { playTerm } from '../../lib/speech'
 import { suggestTranslation } from '../../lib/translate'
+import { voiceItems } from '../../lib/voicing'
 import { ImagePickerDialog } from './ImagePickerDialog'
 
 type ReviewRow = {
@@ -132,6 +133,8 @@ export function BulkAddDialog({
       const item = inserted[index]
       if (item) patch(row.key, { itemId: item.id })
     })
+    // Voicing goes on in the background after the dialog closes.
+    voiceItems(lessonId, inserted)
     let done = 0
     await pool(
       ready.map((row, index) => async () => {

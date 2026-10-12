@@ -1,3 +1,4 @@
+import { releaseAudio } from '../lib/audio'
 import { releaseImages } from '../lib/images'
 import { getSupabase } from '../lib/supabase'
 import {
@@ -29,6 +30,7 @@ export type LessonItem = {
   category: string | null
   phonetic: string | null
   audio_url: string | null
+  audio_source: string | null
   image_path: string | null
   image_source: string | null
   image_source_url: string | null
@@ -148,6 +150,7 @@ export async function deleteLesson(id: string) {
   const { error } = await getSupabase().from('lessons').delete().eq('id', id)
   fail(error)
   await releaseImages(items.map((item) => item.image_path))
+  await releaseAudio(items.map((item) => item.audio_url))
 }
 
 export async function duplicateLesson(id: string): Promise<string> {
@@ -180,6 +183,7 @@ export async function duplicateLesson(id: string): Promise<string> {
         category: item.category,
         phonetic: item.phonetic,
         audio_url: item.audio_url,
+        audio_source: item.audio_source,
         image_path: item.image_path,
         image_source: item.image_source,
         image_source_url: item.image_source_url,
@@ -206,7 +210,7 @@ export async function duplicateLesson(id: string): Promise<string> {
 export async function listItems(lessonId: string): Promise<LessonItem[]> {
   const { data, error } = await getSupabase()
     .from('lesson_items')
-    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
+    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, audio_source, image_path, image_source, image_source_url, image_author, image_license')
     .eq('lesson_id', lessonId)
     .order('position')
   fail(error)
@@ -217,7 +221,7 @@ export async function insertItem(lessonId: string, term: string, position: numbe
   const { data, error } = await getSupabase()
     .from('lesson_items')
     .insert({ lesson_id: lessonId, term, position })
-    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
+    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, audio_source, image_path, image_source, image_source_url, image_author, image_license')
     .single()
   fail(error)
   return data as LessonItem
@@ -236,11 +240,12 @@ export async function insertItems(
     translation: row.translation,
     phonetic: row.phonetic,
     audio_url: row.audio_url,
+    audio_source: row.audio_url ? 'dictionary' : null,
   }))
   const { data, error } = await getSupabase()
     .from('lesson_items')
     .insert(payload)
-    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
+    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, audio_source, image_path, image_source, image_source_url, image_author, image_license')
   fail(error)
   const byId = new Map(((data ?? []) as LessonItem[]).map((item) => [item.id, item]))
   return payload.map((row) => byId.get(row.id)).filter((item): item is LessonItem => Boolean(item))
@@ -251,10 +256,21 @@ export async function updateItem(id: string, patch: Partial<LessonItem>) {
   fail(error)
 }
 
-export async function deleteItem(item: Pick<LessonItem, 'id' | 'image_path'>) {
+/** Sets a dictionary recording only if the word has no audio yet, so it never replaces a generated voice. */
+export async function setDictionaryAudioIfEmpty(id: string, url: string) {
+  const { error } = await getSupabase()
+    .from('lesson_items')
+    .update({ audio_url: url, audio_source: 'dictionary' })
+    .eq('id', id)
+    .is('audio_url', null)
+  fail(error)
+}
+
+export async function deleteItem(item: Pick<LessonItem, 'id' | 'image_path' | 'audio_url'>) {
   const { error } = await getSupabase().from('lesson_items').delete().eq('id', item.id)
   fail(error)
   await releaseImages([item.image_path])
+  await releaseAudio([item.audio_url])
 }
 
 export async function reorderItems(ids: string[]) {
