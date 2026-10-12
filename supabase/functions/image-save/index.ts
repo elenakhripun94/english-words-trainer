@@ -9,6 +9,13 @@ type Candidate = {
   license?: string
 }
 
+const EXTENSIONS: Array<[string, string]> = [
+  ['svg', 'svg'],
+  ['png', 'png'],
+  ['webp', 'webp'],
+  ['gif', 'gif'],
+]
+
 Deno.serve(async (req) => {
   const early = preflight(req)
   if (early) return early
@@ -28,16 +35,21 @@ Deno.serve(async (req) => {
     const userClient = createClient(url, anon, { global: { headers: { Authorization: authHeader } } })
     const { data: lesson } = await userClient.from('lessons').select('id').eq('id', lessonId).maybeSingle()
     if (!lesson) return json({ error: 'forbidden' }, 403)
-    const { data: item } = await userClient.from('lesson_items').select('id').eq('id', itemId).eq('lesson_id', lessonId).maybeSingle()
+    const { data: item } = await userClient
+      .from('lesson_items')
+      .select('id, image_path')
+      .eq('id', itemId)
+      .eq('lesson_id', lessonId)
+      .maybeSingle()
     if (!item) return json({ error: 'not_found' }, 404)
 
     const response = await fetch(candidate.fullUrl, { signal: AbortSignal.timeout(12000) })
     if (!response.ok) return json({ error: 'download_failed' }, 502)
-    const type = response.headers.get('content-type') ?? ''
+    const type = response.headers.get('content-type')?.split(';')[0].trim() ?? ''
     if (!type.startsWith('image/')) return json({ error: 'not_an_image' }, 400)
     const bytes = new Uint8Array(await response.arrayBuffer())
     if (bytes.byteLength > 5 * 1024 * 1024) return json({ error: 'image_too_large' }, 400)
-    const extension = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('gif') ? 'gif' : 'jpg'
+    const extension = EXTENSIONS.find(([needle]) => type.includes(needle))?.[1] ?? 'jpg'
     const path = `${lessonId}/${itemId}-${crypto.randomUUID().slice(0, 8)}.${extension}`
 
     const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
@@ -54,7 +66,20 @@ Deno.serve(async (req) => {
         image_license: candidate.license ?? null,
       })
       .eq('id', itemId)
-    if (updated.error) return json({ error: updated.error.message }, 500)
+    if (updated.error) {
+      await admin.storage.from('lesson-images').remove([path])
+      return json({ error: updated.error.message }, 500)
+    }
+
+    // Drop the replaced file unless a copied lesson still uses it.
+    const previous = item.image_path as string | null
+    if (previous && !/^https?:/.test(previous)) {
+      const { count } = await admin
+        .from('lesson_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('image_path', previous)
+      if (count === 0) await admin.storage.from('lesson-images').remove([previous])
+    }
     return json({ imagePath: path })
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'save_failed' }, 500)

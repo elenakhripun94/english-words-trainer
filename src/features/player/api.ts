@@ -10,6 +10,7 @@ export type PlayerItem = {
   audioUrl: string | null
   imageUrl: string | null
   translation: string | null
+  category: string | null
   imageAuthor: string | null
   imageLicense: string | null
   imageSourceUrl: string | null
@@ -30,7 +31,7 @@ export type PlayerProgress = {
 
 export type PlayerAssignment = {
   studentName: string
-  lesson: { title: string; topic: string | null; description: string | null; level: string | null }
+  lesson: { title: string; topic: string | null; description: string | null; level: string | null; noText: boolean }
   items: PlayerItem[]
   exercises: PlayerExercise[]
   progress: PlayerProgress[]
@@ -41,7 +42,7 @@ export async function fetchAssignment(token: string): Promise<PlayerAssignment> 
   if (error) throw new Error(error.message)
   const raw = data as {
     student_name: string
-    lesson: PlayerAssignment['lesson']
+    lesson: Omit<PlayerAssignment['lesson'], 'noText'> & { no_text?: boolean }
     items: Array<{
       id: string
       term: string
@@ -49,6 +50,7 @@ export async function fetchAssignment(token: string): Promise<PlayerAssignment> 
       audio_url: string | null
       image_url: string | null
       translation: string | null
+      category?: string | null
       image_author: string | null
       image_license: string | null
       image_source_url: string | null
@@ -58,7 +60,7 @@ export async function fetchAssignment(token: string): Promise<PlayerAssignment> 
   }
   return {
     studentName: raw.student_name,
-    lesson: raw.lesson,
+    lesson: { ...raw.lesson, noText: Boolean(raw.lesson.no_text) },
     items: (raw.items ?? []).map((item) => ({
       id: item.id,
       term: item.term,
@@ -66,6 +68,7 @@ export async function fetchAssignment(token: string): Promise<PlayerAssignment> 
       audioUrl: item.audio_url,
       imageUrl: resolveImageUrl(item.image_url),
       translation: item.translation,
+      category: item.category ?? null,
       imageAuthor: item.image_author,
       imageLicense: item.image_license,
       imageSourceUrl: item.image_source_url,

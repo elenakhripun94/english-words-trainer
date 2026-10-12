@@ -4,7 +4,8 @@ import { getResultDetail, type AttemptRow, type LessonItem } from '../../api/db'
 import { TeacherShell } from '../../components/Shell'
 import { Badge, Spinner } from '../../components/ui'
 import { ru } from '../../i18n/ru'
-import type { ExerciseType } from '../../lib/exercises'
+import { categoryById } from '../../lib/categories'
+import { CHOICE_EXERCISES, type ExerciseType } from '../../lib/exercises'
 
 export function AssignmentDetailPage() {
   const { id = '' } = useParams()
@@ -84,7 +85,19 @@ function MistakeText({
   const wrong = attempts.filter((attempt) => attempt.is_correct === false)
   const skips = attempts.filter((attempt) => attempt.skipped)
   const parts: string[] = []
-  if (exercise === 'pick_word' || exercise === 'pick_image' || exercise === 'pick_translation' || exercise === 'match_pairs') {
+  if (exercise === 'true_false') {
+    const confused = wrong
+      .filter((attempt) => attempt.chosen_item_id && attempt.chosen_item_id !== item.id)
+      .map((attempt) => items.find((candidate) => candidate.id === attempt.chosen_item_id)?.term)
+      .filter((value): value is string => Boolean(value))
+    if (confused.length) parts.push(`${ru.results.confuses} ${item.term} ${ru.results.withWord} ${confused.join(', ')}`)
+    if (wrong.some((attempt) => attempt.chosen_item_id === item.id)) parts.push(ru.results.notRecognized)
+  } else if (exercise === 'sort_groups') {
+    const boxes = wrong
+      .map((attempt) => categoryById(attempt.answer_text)?.label ?? attempt.answer_text)
+      .filter((value): value is string => Boolean(value))
+    if (boxes.length) parts.push(`${ru.results.put} ${boxes.join(', ')}`)
+  } else if (CHOICE_EXERCISES.has(exercise)) {
     const names = wrong
       .map((attempt) => items.find((candidate) => candidate.id === attempt.chosen_item_id))
       .map((candidate) => (exercise === 'pick_translation' ? candidate?.translation : candidate?.term))

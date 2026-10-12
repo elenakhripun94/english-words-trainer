@@ -1,14 +1,24 @@
 import { useMemo, useState } from 'react'
-import { Button } from '../../components/ui'
 import { ru } from '../../i18n/ru'
-import type { ExerciseSettings } from '../../lib/exercises'
+import type { ExerciseSettings, MemoryVariant } from '../../lib/exercises'
 import { splitIntoRounds } from '../../lib/rounds'
 import { seededShuffle } from '../../lib/shuffle'
 import { playTerm } from '../../lib/speech'
 import type { PlayerItem } from './api'
+import { HomeButton, useNoText } from './kids'
 import { deliverAnswer, deliverComplete } from './sync'
 
+type Side = 'image' | 'word' | 'twin' | 'sound'
+
+const SECOND_SIDE: Record<MemoryVariant, Side> = { words: 'word', same: 'twin', sound: 'sound' }
+
+/**
+ * Memory game. «words» pairs a picture with its written word, «same» two equal pictures,
+ * «sound» a picture with a card that says the word.
+ */
 export function MatchPairsExercise({
+  exercise,
+  variant,
   token,
   items,
   settings,
@@ -16,6 +26,8 @@ export function MatchPairsExercise({
   onExit,
   onFinish,
 }: {
+  exercise: 'match_pairs' | 'memory_images'
+  variant: MemoryVariant
   token: string
   items: PlayerItem[]
   settings: ExerciseSettings
@@ -23,9 +35,10 @@ export function MatchPairsExercise({
   onExit: () => void
   onFinish: (moves: number) => void
 }) {
+  const noText = useNoText()
   const rounds = useMemo(
-    () => splitIntoRounds(seededShuffle(items, `${token}:match_pairs`), settings.pairsPerRound ?? 6),
-    [items, settings.pairsPerRound, token],
+    () => splitIntoRounds(seededShuffle(items, `${token}:${exercise}`), settings.pairsPerRound ?? 6),
+    [exercise, items, settings.pairsPerRound, token],
   )
   const [roundIndex, setRoundIndex] = useState(0)
   const [moves, setMoves] = useState(0)
@@ -34,12 +47,12 @@ export function MatchPairsExercise({
     () =>
       seededShuffle(
         round.flatMap((item) => [
-          { key: `${item.id}:image`, itemId: item.id, side: 'image' as const },
-          { key: `${item.id}:word`, itemId: item.id, side: 'word' as const },
+          { key: `${item.id}:image`, itemId: item.id, side: 'image' as Side },
+          { key: `${item.id}:second`, itemId: item.id, side: SECOND_SIDE[variant] },
         ]),
-        `${token}:match_pairs:${roundIndex}`,
+        `${token}:${exercise}:${roundIndex}`,
       ),
-    [round, roundIndex, token],
+    [exercise, round, roundIndex, token, variant],
   )
   const [openKeys, setOpenKeys] = useState<string[]>([])
   const [matched, setMatched] = useState<string[]>([])
@@ -50,14 +63,19 @@ export function MatchPairsExercise({
   }
 
   async function choose(key: string) {
-    if (lock || openKeys.includes(key) || matched.includes(cardByKey(key)?.itemId ?? '')) return
+    const card = cardByKey(key)
+    if (!card || lock || openKeys.includes(key) || matched.includes(card.itemId)) return
+    const item = round.find((entry) => entry.id === card.itemId)
+    // In the picture-only games the word sounds as soon as a card opens.
+    if (item && (card.side === 'sound' || variant === 'same')) void playTerm(item.term, item.audioUrl)
     const next = [...openKeys, key]
     setOpenKeys(next)
     if (next.length < 2) return
     const [first, second] = next.map((id) => cardByKey(id))
     if (!first || !second) return
     setLock(true)
-    if (first.side === second.side) {
+    // Two words or two sound cards can never be a pair, so this is not counted as a move.
+    if (variant !== 'same' && first.side === second.side) {
       window.setTimeout(() => {
         setOpenKeys([])
         setLock(false)
@@ -65,24 +83,20 @@ export function MatchPairsExercise({
       return
     }
     const image = first.side === 'image' ? first : second
-    const word = first.side === 'word' ? first : second
-    const correct = image.itemId === word.itemId
+    const other = image === first ? second : first
+    const correct = image.itemId === other.itemId
     setMoves((value) => value + 1)
-    await deliverAnswer(
-      token,
-      { exercise: 'match_pairs', itemId: image.itemId, chosenItemId: word.itemId },
-      practice,
-    )
+    await deliverAnswer(token, { exercise, itemId: image.itemId, chosenItemId: other.itemId }, practice)
     if (correct) {
-      const item = round.find((entry) => entry.id === image.itemId)
-      if (item) void playTerm(item.term, item.audioUrl)
+      const matchedItem = round.find((entry) => entry.id === image.itemId)
+      if (matchedItem) window.setTimeout(() => void playTerm(matchedItem.term, matchedItem.audioUrl), variant === 'words' ? 0 : 700)
       const done = [...matched, image.itemId]
       setMatched(done)
       setOpenKeys([])
       setLock(false)
       if (done.length === round.length) {
         if (roundIndex + 1 >= rounds.length) {
-          if (!practice) await deliverComplete(token, 'match_pairs', false, false)
+          if (!practice) await deliverComplete(token, exercise, false, false)
           onFinish(moves + 1)
         }
       }
@@ -105,14 +119,14 @@ export function MatchPairsExercise({
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
-        <Button variant="ghost" onClick={onExit}>
-          ← {ru.player.toList}
-        </Button>
-        <p className="text-sm text-muted">
-          {ru.player.round} {roundIndex + 1} / {rounds.length}
-        </p>
+        <HomeButton onExit={onExit} />
+        {!noText && (
+          <p className="text-sm text-muted">
+            {ru.player.round} {roundIndex + 1} / {rounds.length}
+          </p>
+        )}
       </div>
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      <div className={`grid gap-2 ${cards.length <= 8 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3 sm:grid-cols-4'}`}>
         {cards.map((card) => {
           const item = round.find((entry) => entry.id === card.itemId)
           const shown = openKeys.includes(card.key) || matched.includes(card.itemId)
@@ -121,27 +135,32 @@ export function MatchPairsExercise({
               key={card.key}
               type="button"
               aria-pressed={shown}
-              className={`flex aspect-square items-center justify-center overflow-hidden rounded-2xl border border-line text-sm font-semibold ${shown ? 'bg-card' : 'card-back text-white'}`}
+              className={`flex aspect-square items-center justify-center overflow-hidden rounded-2xl border border-line text-sm font-semibold ${shown ? 'bg-white' : 'card-back text-white'} ${matched.includes(card.itemId) ? 'opacity-70' : ''}`}
               onClick={() => void choose(card.key)}
             >
-              {shown ? (
-                card.side === 'image' && item?.imageUrl ? (
-                  <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="px-1">{item?.term}</span>
-                )
-              ) : (
-                '?'
-              )}
+              {shown ? <CardFace side={card.side} item={item} /> : <span className="text-2xl">?</span>}
             </button>
           )
         })}
       </div>
       {roundDone && roundIndex + 1 < rounds.length && (
-        <Button className="mt-4 w-full" onClick={nextRound}>
-          {ru.player.next}
-        </Button>
+        <button type="button" className="mt-4 w-full rounded-2xl bg-accent py-4 text-3xl text-white" aria-label={ru.player.next} onClick={nextRound}>
+          {noText ? '➡️' : ru.player.next}
+        </button>
       )}
     </div>
   )
+}
+
+function CardFace({ side, item }: { side: Side; item: PlayerItem | undefined }) {
+  if (!item) return null
+  if (side === 'sound') {
+    return (
+      <span className="text-5xl" role="img" aria-label={ru.kids.listen}>
+        🔊
+      </span>
+    )
+  }
+  if (side === 'word') return <span className="px-1">{item.term}</span>
+  return item.imageUrl ? <img src={item.imageUrl} alt="" className="h-full w-full object-contain p-1" /> : null
 }

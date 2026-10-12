@@ -4,7 +4,7 @@ import { Button, Dialog, TextArea } from '../../components/ui'
 import { ru } from '../../i18n/ru'
 import { parseBulkInput, type BulkDiscard } from '../../lib/bulkParse'
 import { lookupTerm, type DictionaryHit } from '../../lib/dictionary'
-import { searchImages, saveRemoteImage, type ImageCandidate } from '../../lib/images'
+import { saveRemoteImage, suggestImages, type ImageCandidate } from '../../lib/images'
 import { pool } from '../../lib/pool'
 import { playTerm } from '../../lib/speech'
 import { suggestTranslation } from '../../lib/translate'
@@ -64,7 +64,7 @@ export function BulkAddDialog({
     const [hit, translation, images] = await Promise.all([
       lookupTerm(row.term).catch(() => null),
       row.translation ? Promise.resolve(row.translation) : suggestTranslation(row.term).catch(() => null),
-      searchImages(row.term).catch(() => ({ candidates: [] as ImageCandidate[], warnings: [] })),
+      suggestImages(row.term, 8).catch(() => [] as ImageCandidate[]),
     ])
     patch(row.key, {
       status: 'ready',
@@ -73,8 +73,8 @@ export function BulkAddDialog({
       audioUrl: hit?.audioUrl ?? null,
       translation: row.translation || translation || '',
       translationAuto: !row.translation && Boolean(translation),
-      candidates: images.candidates.slice(0, 6),
-      selected: images.candidates[0] ?? null,
+      candidates: images,
+      selected: images[0] ?? null,
     })
   }
 
@@ -222,7 +222,7 @@ export function BulkAddDialog({
           if (!pickerRow) return
           patch(pickerRow.key, {
             selected: candidate,
-            candidates: [candidate, ...pickerRow.candidates.filter((item) => item.id !== candidate.id)].slice(0, 6),
+            candidates: [candidate, ...pickerRow.candidates.filter((item) => item.id !== candidate.id)].slice(0, 8),
           })
           setPickerKey(null)
         }}
@@ -309,11 +309,11 @@ function BulkReviewTable({
           <button
             key={`${candidate.source}-${candidate.id}`}
             type="button"
-            className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 ${row.selected?.id === candidate.id ? 'border-accent' : 'border-transparent'}`}
+            className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 bg-white ${row.selected?.id === candidate.id && row.selected?.source === candidate.source ? 'border-accent' : 'border-transparent'}`}
             onClick={() => onChange({ selected: candidate })}
             aria-label={ru.images.pick}
           >
-            <img src={candidate.thumbUrl} alt="" className="h-full w-full object-cover" />
+            <img src={candidate.thumbUrl} alt="" className="h-full w-full object-contain" />
           </button>
         ))}
         <Button variant="ghost" onClick={onMore}>

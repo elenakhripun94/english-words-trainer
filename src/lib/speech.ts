@@ -24,7 +24,18 @@ export async function playTerm(
   await speak(term, rate)
 }
 
-export function speak(term: string, rate = 1): Promise<void> {
+/** Reads an instruction aloud in Russian for a child who cannot read yet. */
+export function sayRu(text: string): Promise<void> {
+  stopAudio()
+  return speak(text, 1, 'ru')
+}
+
+export function stopSpeech(): void {
+  stopAudio()
+  window.speechSynthesis?.cancel()
+}
+
+export function speak(term: string, rate = 1, language = 'en'): Promise<void> {
   const synth = window.speechSynthesis
   if (!synth) return Promise.resolve()
 
@@ -40,7 +51,7 @@ export function speak(term: string, rate = 1): Promise<void> {
     const start = (voice: SpeechSynthesisVoice | undefined, allowRetry: boolean) => {
       const utterance = new SpeechSynthesisUtterance(term)
       currentUtterance = utterance
-      utterance.lang = voice?.lang ?? 'en-US'
+      utterance.lang = voice?.lang ?? (language === 'ru' ? 'ru-RU' : 'en-US')
       utterance.rate = rate
       utterance.volume = 1
       if (voice) utterance.voice = voice
@@ -63,13 +74,13 @@ export function speak(term: string, rate = 1): Promise<void> {
         const onVoices = () => {
           synth.removeEventListener('voiceschanged', onVoices)
           if (settled || synth.speaking) return
-          start(pickVoice(synth.getVoices()), false)
+          start(pickVoice(synth.getVoices(), language), false)
         }
         synth.addEventListener('voiceschanged', onVoices)
       }
     }
 
-    const begin = () => start(pickVoice(synth.getVoices()), true)
+    const begin = () => start(pickVoice(synth.getVoices(), language), true)
     if (synth.speaking || synth.pending) {
       synth.cancel()
       window.setTimeout(begin, 50)
@@ -79,8 +90,8 @@ export function speak(term: string, rate = 1): Promise<void> {
   })
 }
 
-function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
-  const english = voices.filter((voice) => voice.lang.toLowerCase().startsWith('en'))
+function pickVoice(voices: SpeechSynthesisVoice[], language = 'en'): SpeechSynthesisVoice | undefined {
+  const matching = voices.filter((voice) => voice.lang.toLowerCase().startsWith(language))
   const score = (voice: SpeechSynthesisVoice) => {
     const lang = voice.lang.toLowerCase()
     const name = voice.name.toLowerCase()
@@ -94,7 +105,7 @@ function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undef
     }
     return value
   }
-  return [...english].sort((a, b) => score(b) - score(a))[0]
+  return [...matching].sort((a, b) => score(b) - score(a))[0]
 }
 
 function playUrl(url: string): Promise<boolean> {

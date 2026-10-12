@@ -5,6 +5,7 @@ import { loadQueue, saveQueue, clearQueue } from '../../lib/playerStorage'
 import { seededShuffle } from '../../lib/shuffle'
 import { playTerm } from '../../lib/speech'
 import type { PlayerItem } from './api'
+import { BigButton, HomeButton, useNoText } from './kids'
 import { deliverAnswer, deliverComplete } from './sync'
 
 export function MemorizeExercise({
@@ -29,6 +30,7 @@ export function MemorizeExercise({
     return found >= 0 ? found : 0
   })
   const item = order[index]
+  const noText = useNoText()
 
   useEffect(() => {
     if (item) void playTerm(item.term, item.audioUrl)
@@ -62,13 +64,11 @@ export function MemorizeExercise({
 
   return (
     <div>
-      <Button variant="ghost" onClick={onExit}>
-        ← {ru.player.toList}
-      </Button>
-      {item.imageUrl && <img src={item.imageUrl} alt="" className="mx-auto mt-4 aspect-square w-full max-w-sm rounded-3xl object-cover" />}
-      <p className="mt-4 text-center font-serif text-4xl">{item.term}</p>
-      {item.phonetic && <p className="text-center text-muted">{item.phonetic}</p>}
-      {item.translation && <p className="text-center text-lg">{item.translation}</p>}
+      <HomeButton onExit={onExit} />
+      {item.imageUrl && <img src={item.imageUrl} alt="" className="mx-auto mt-4 aspect-square w-full max-w-sm rounded-3xl bg-white object-contain" />}
+      {!noText && <p className="mt-4 text-center font-serif text-4xl">{item.term}</p>}
+      {!noText && item.phonetic && <p className="text-center text-muted">{item.phonetic}</p>}
+      {!noText && item.translation && <p className="text-center text-lg">{item.translation}</p>}
       {(item.imageAuthor || item.imageLicense) && (
         <p className="mt-2 text-center text-xs text-muted">
           {item.imageAuthor}
@@ -83,12 +83,23 @@ export function MemorizeExercise({
           ) : null}
         </p>
       )}
-      <div className="mt-4 grid gap-2">
-        <Button variant="soft" aria-label={ru.player.listen} onClick={() => void playTerm(item.term, item.audioUrl)}>
-          {ru.player.listen}
-        </Button>
-        <Button onClick={() => void next()}>{ru.player.next}</Button>
-      </div>
+      {noText ? (
+        <div className="mt-6 flex justify-center gap-6">
+          <BigButton label={ru.player.listen} tone="soft" onClick={() => void playTerm(item.term, item.audioUrl)}>
+            🔊
+          </BigButton>
+          <BigButton label={ru.player.next} onClick={() => void next()}>
+            ➡️
+          </BigButton>
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-2">
+          <Button variant="soft" aria-label={ru.player.listen} onClick={() => void playTerm(item.term, item.audioUrl)}>
+            {ru.player.listen}
+          </Button>
+          <Button onClick={() => void next()}>{ru.player.next}</Button>
+        </div>
+      )}
     </div>
   )
 }

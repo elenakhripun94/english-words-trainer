@@ -2,18 +2,23 @@ import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type D
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { disableExercise, enableExercise, listExercises, listItems, updateExercise } from '../../api/db'
+import { disableExercise, enableExercise, enableExercises, listExercises, listItems, updateExercise, type LessonExercise } from '../../api/db'
 import { useToast } from '../../components/Toast'
+import { Button } from '../../components/ui'
 import { ru } from '../../i18n/ru'
 import { errorText } from '../../lib/errors'
 import {
   EXERCISE_TYPES,
+  NO_TEXT_EXERCISE_ORDER,
+  PICTURE_EXERCISES,
   isExerciseAvailable,
   unavailableReason,
+  type ExerciseSettings,
   type ExerciseType,
+  type MemoryVariant,
 } from '../../lib/exercises'
 
-export function ExercisesConfig({ lessonId }: { lessonId: string }) {
+export function ExercisesConfig({ lessonId, noText }: { lessonId: string; noText: boolean }) {
   const toast = useToast()
   const queryClient = useQueryClient()
   const exercises = useQuery({ queryKey: ['exercises', lessonId], queryFn: () => listExercises(lessonId) })
@@ -39,6 +44,24 @@ export function ExercisesConfig({ lessonId }: { lessonId: string }) {
     }
   }
 
+  async function enableKidsSet() {
+    try {
+      await enableExercises(lessonId, NO_TEXT_EXERCISE_ORDER)
+      await refresh()
+    } catch (error) {
+      toast(errorText(error))
+    }
+  }
+
+  async function saveSettings(type: ExerciseType, settings: ExerciseSettings) {
+    try {
+      await updateExercise(lessonId, type, { settings })
+      await refresh()
+    } catch (error) {
+      toast(errorText(error))
+    }
+  }
+
   async function onDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
@@ -57,22 +80,31 @@ export function ExercisesConfig({ lessonId }: { lessonId: string }) {
 
   return (
     <section className="mt-8">
-      <h2 className="mb-3 font-serif text-3xl">{ru.exercises.title}</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-serif text-3xl">{ru.exercises.title}</h2>
+        {noText && NO_TEXT_EXERCISE_ORDER.some((type) => !enabledTypes.has(type)) && (
+          <Button variant="soft" onClick={() => void enableKidsSet()}>
+            {ru.exercises.kidsSet}
+          </Button>
+        )}
+      </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => void onDragEnd(event)}>
         <SortableContext items={enabled.map((exercise) => exercise.type)} strategy={verticalListSortingStrategy}>
           <div className="grid gap-2">
             {order.map((type) => {
               const row = enabled.find((exercise) => exercise.type === type)
-              const available = isExerciseAvailable(type, items.data ?? [])
-              const reason = unavailableReason(type, items.data ?? [])
+              const available = isExerciseAvailable(type, items.data ?? [], noText)
+              const reason = unavailableReason(type, items.data ?? [], noText)
               return (
                 <ExerciseRow
                   key={type}
                   type={type}
+                  row={row}
                   enabled={Boolean(row)}
                   available={available}
                   reason={reason}
                   onToggle={(on) => void toggle(type, on)}
+                  onSettings={(settings) => void saveSettings(type, settings)}
                 />
               )
             })}
@@ -85,16 +117,20 @@ export function ExercisesConfig({ lessonId }: { lessonId: string }) {
 
 function ExerciseRow({
   type,
+  row,
   enabled,
   available,
   reason,
   onToggle,
+  onSettings,
 }: {
   type: ExerciseType
+  row: LessonExercise | undefined
   enabled: boolean
   available: boolean
   reason: string | null
   onToggle: (on: boolean) => void
+  onSettings: (settings: ExerciseSettings) => void
 }) {
   const sortable = useSortable({ id: type, disabled: !enabled })
   return (
@@ -118,6 +154,9 @@ function ExerciseRow({
         />
         <span>
           <span className="font-semibold">{ru.exercises.names[type]}</span>
+          {PICTURE_EXERCISES.has(type) && (
+            <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">{ru.exercises.noReading}</span>
+          )}
           <span className="mt-0.5 block text-sm text-muted">{ru.exercises.blurbs[type]}</span>
           {reason && (
             <span className="mt-1 block text-sm text-warn">
@@ -126,6 +165,80 @@ function ExerciseRow({
           )}
         </span>
       </label>
+      {row && <ExerciseSettingsRow type={type} settings={row.settings} onChange={onSettings} />}
     </article>
   )
+}
+
+const OPTION_EXERCISES: ReadonlySet<ExerciseType> = new Set(['listen_find', 'feed', 'shadow', 'balloons', 'whats_missing'])
+
+function ExerciseSettingsRow({
+  type,
+  settings,
+  onChange,
+}: {
+  type: ExerciseType
+  settings: ExerciseSettings
+  onChange: (settings: ExerciseSettings) => void
+}) {
+  const select = 'ml-2 rounded-lg border border-line bg-white px-2 py-1'
+  if (OPTION_EXERCISES.has(type)) {
+    return (
+      <label className="mt-2 block pl-8 text-sm text-muted">
+        {ru.exercises.options}
+        <select className={select} value={settings.options ?? 3} onChange={(event) => onChange({ ...settings, options: Number(event.target.value) })}>
+          {[2, 3, 4].map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
+    )
+  }
+  if (type === 'memory_images') {
+    return (
+      <div className="mt-2 flex flex-wrap gap-3 pl-8 text-sm text-muted">
+        <label>
+          {ru.exercises.variant}
+          <select
+            className={select}
+            value={settings.variant ?? 'same'}
+            onChange={(event) => onChange({ ...settings, variant: event.target.value as MemoryVariant })}
+          >
+            {(['same', 'sound'] as const).map((value) => (
+              <option key={value} value={value}>
+                {ru.exercises.variants[value]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {ru.exercises.pairs}
+          <select className={select} value={settings.pairsPerRound ?? 4} onChange={(event) => onChange({ ...settings, pairsPerRound: Number(event.target.value) })}>
+            {[3, 4, 6].map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    )
+  }
+  if (type === 'puzzle') {
+    return (
+      <label className="mt-2 block pl-8 text-sm text-muted">
+        {ru.exercises.pieces}
+        <select className={select} value={settings.pieces ?? 4} onChange={(event) => onChange({ ...settings, pieces: Number(event.target.value) })}>
+          {[2, 3, 4, 6].map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
+    )
+  }
+  return null
 }

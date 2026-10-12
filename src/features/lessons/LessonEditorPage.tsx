@@ -33,8 +33,8 @@ export function LessonEditorPage() {
         <>
           <h1 className="mb-4 font-serif text-4xl">{lesson.data.title}</h1>
           <LessonMetaForm key={`${lesson.data.id}:${lesson.data.updated_at}`} lesson={lesson.data} />
-          <ItemsList lessonId={id} locked={lesson.data.status !== 'draft'} />
-          <ExercisesConfig lessonId={id} />
+          <ItemsList lessonId={id} published={lesson.data.status !== 'draft'} />
+          <ExercisesConfig lessonId={id} noText={lesson.data.no_text} />
           <div className="mt-8">
             <Button type="submit" form={lessonMetaFormId} className="w-full sm:w-auto">
               {ru.save}

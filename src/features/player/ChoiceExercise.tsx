@@ -7,6 +7,7 @@ import { rngFromSeed } from '../../lib/shuffle'
 import { playTerm } from '../../lib/speech'
 import type { PlayerItem } from './api'
 import { ExerciseShell, type ShellContext } from './ExerciseShell'
+import { KidsFeedback, SoundButton, useNoText } from './kids'
 
 export function ChoiceExercise({
   mode,
@@ -57,6 +58,7 @@ function ChoiceBody({
     [ctx.item.id, items, mode, settings.options, token],
   )
   const [picked, setPicked] = useState<string | null>(null)
+  const noText = useNoText()
 
   useEffect(() => setPicked(null), [ctx.item.id])
 
@@ -87,7 +89,12 @@ function ChoiceBody({
       {mode === 'pick_word' && ctx.item.imageUrl && (
         <img src={ctx.item.imageUrl} alt="" className="mx-auto aspect-square w-full max-w-sm rounded-3xl object-cover" />
       )}
-      {mode !== 'pick_word' && (
+      {mode !== 'pick_word' && noText && (
+        <div className="flex justify-center">
+          <SoundButton item={ctx.item} />
+        </div>
+      )}
+      {mode !== 'pick_word' && !noText && (
         <div className="text-center">
           <p className="font-serif text-4xl">{ctx.item.term}</p>
           <Button className="mt-3" variant="soft" aria-label={ru.player.listen} onClick={() => void playTerm(ctx.item.term, ctx.item.audioUrl)}>
@@ -116,7 +123,7 @@ function ChoiceBody({
                     : 'border-line bg-card'
               }`}
             >
-              <span className="mr-2 text-sm text-muted">{index + 1}</span>
+              {!noText && <span className="mr-2 text-sm text-muted">{index + 1}</span>}
               {mode === 'pick_image' && option.imageUrl ? (
                 <img src={option.imageUrl} alt={option.term} className="mt-2 aspect-square w-full rounded-xl object-cover" />
               ) : mode === 'pick_translation' ? (
@@ -128,7 +135,8 @@ function ChoiceBody({
           )
         })}
       </div>
-      {ctx.phase === 'feedback' && (
+      {ctx.phase === 'feedback' && noText && <KidsFeedback correct={Boolean(ctx.correct)} item={ctx.item} onDone={ctx.next} />}
+      {ctx.phase === 'feedback' && !noText && (
         <div className="mt-4">
           <p className={ctx.correct ? 'text-good' : 'text-bad'}>{ctx.correct ? ru.player.correct : ru.player.wrong}</p>
           <Button className="mt-3 w-full" onClick={ctx.next}>

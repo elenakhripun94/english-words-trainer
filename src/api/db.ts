@@ -1,3 +1,4 @@
+import { releaseImages } from '../lib/images'
 import { getSupabase } from '../lib/supabase'
 import {
   DEFAULT_EXERCISE_ORDER,
@@ -15,6 +16,7 @@ export type Lesson = {
   description: string | null
   level: string | null
   status: LessonStatus
+  no_text: boolean
   updated_at: string
 }
 
@@ -24,6 +26,7 @@ export type LessonItem = {
   position: number
   term: string
   translation: string | null
+  category: string | null
   phonetic: string | null
   audio_url: string | null
   image_path: string | null
@@ -95,7 +98,7 @@ function fail(error: { message: string } | null) {
 export async function listLessons(): Promise<LessonCard[]> {
   const { data, error } = await getSupabase()
     .from('lessons')
-    .select('id, title, topic, description, level, status, updated_at, lesson_items(count), assignments(completed_at)')
+    .select('id, title, topic, description, level, status, no_text, updated_at, lesson_items(count), assignments(completed_at)')
     .order('updated_at', { ascending: false })
   fail(error)
   return ((data ?? []) as Array<Lesson & {
@@ -111,7 +114,7 @@ export async function listLessons(): Promise<LessonCard[]> {
 
 export async function createLesson(title: string): Promise<Lesson> {
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('lessons').insert({ title }).select('id, title, topic, description, level, status, updated_at').single()
+  const { data, error } = await supabase.from('lessons').insert({ title }).select('id, title, topic, description, level, status, no_text, updated_at').single()
   fail(error)
   const lesson = data as Lesson
   const rows = DEFAULT_EXERCISE_ORDER.map((type, position) => ({
@@ -128,21 +131,23 @@ export async function createLesson(title: string): Promise<Lesson> {
 export async function getLesson(id: string): Promise<Lesson | null> {
   const { data, error } = await getSupabase()
     .from('lessons')
-    .select('id, title, topic, description, level, status, updated_at')
+    .select('id, title, topic, description, level, status, no_text, updated_at')
     .eq('id', id)
     .maybeSingle()
   fail(error)
   return (data as Lesson | null) ?? null
 }
 
-export async function updateLesson(id: string, patch: Partial<Pick<Lesson, 'title' | 'topic' | 'description' | 'level' | 'status'>>) {
+export async function updateLesson(id: string, patch: Partial<Pick<Lesson, 'title' | 'topic' | 'description' | 'level' | 'status' | 'no_text'>>) {
   const { error } = await getSupabase().from('lessons').update(patch).eq('id', id)
   fail(error)
 }
 
 export async function deleteLesson(id: string) {
+  const items = await listItems(id)
   const { error } = await getSupabase().from('lessons').delete().eq('id', id)
   fail(error)
+  await releaseImages(items.map((item) => item.image_path))
 }
 
 export async function duplicateLesson(id: string): Promise<string> {
@@ -158,6 +163,7 @@ export async function duplicateLesson(id: string): Promise<string> {
       topic: lesson.topic,
       description: lesson.description,
       level: lesson.level,
+      no_text: lesson.no_text,
       status: 'draft',
     })
     .select('id')
@@ -171,6 +177,7 @@ export async function duplicateLesson(id: string): Promise<string> {
         position: item.position,
         term: item.term,
         translation: item.translation,
+        category: item.category,
         phonetic: item.phonetic,
         audio_url: item.audio_url,
         image_path: item.image_path,
@@ -199,7 +206,7 @@ export async function duplicateLesson(id: string): Promise<string> {
 export async function listItems(lessonId: string): Promise<LessonItem[]> {
   const { data, error } = await getSupabase()
     .from('lesson_items')
-    .select('id, lesson_id, position, term, translation, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
+    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
     .eq('lesson_id', lessonId)
     .order('position')
   fail(error)
@@ -210,7 +217,7 @@ export async function insertItem(lessonId: string, term: string, position: numbe
   const { data, error } = await getSupabase()
     .from('lesson_items')
     .insert({ lesson_id: lessonId, term, position })
-    .select('id, lesson_id, position, term, translation, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
+    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
     .single()
   fail(error)
   return data as LessonItem
@@ -233,7 +240,7 @@ export async function insertItems(
   const { data, error } = await getSupabase()
     .from('lesson_items')
     .insert(payload)
-    .select('id, lesson_id, position, term, translation, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
+    .select('id, lesson_id, position, term, translation, category, phonetic, audio_url, image_path, image_source, image_source_url, image_author, image_license')
   fail(error)
   const byId = new Map(((data ?? []) as LessonItem[]).map((item) => [item.id, item]))
   return payload.map((row) => byId.get(row.id)).filter((item): item is LessonItem => Boolean(item))
@@ -244,9 +251,10 @@ export async function updateItem(id: string, patch: Partial<LessonItem>) {
   fail(error)
 }
 
-export async function deleteItem(id: string) {
-  const { error } = await getSupabase().from('lesson_items').delete().eq('id', id)
+export async function deleteItem(item: Pick<LessonItem, 'id' | 'image_path'>) {
+  const { error } = await getSupabase().from('lesson_items').delete().eq('id', item.id)
   fail(error)
+  await releaseImages([item.image_path])
 }
 
 export async function reorderItems(ids: string[]) {
@@ -282,6 +290,19 @@ export async function disableExercise(lessonId: string, type: ExerciseType) {
 
 export async function updateExercise(lessonId: string, type: ExerciseType, patch: { position?: number; settings?: ExerciseSettings }) {
   const { error } = await getSupabase().from('lesson_exercises').update(patch).eq('lesson_id', lessonId).eq('type', type)
+  fail(error)
+}
+
+/** Turns on the given exercises after the ones already enabled, keeping the order. */
+export async function enableExercises(lessonId: string, types: ExerciseType[]) {
+  const current = await listExercises(lessonId)
+  const have = new Set(current.map((exercise) => exercise.type))
+  const start = current.reduce((max, exercise) => Math.max(max, exercise.position + 1), 0)
+  const rows = types
+    .filter((type) => !have.has(type))
+    .map((type, index) => ({ lesson_id: lessonId, type, position: start + index, settings: defaultSettings(type) }))
+  if (rows.length === 0) return
+  const { error } = await getSupabase().from('lesson_exercises').insert(rows)
   fail(error)
 }
 

@@ -28,6 +28,12 @@ export function LessonMetaForm({ lesson }: { lesson: Lesson }) {
     onError: (error) => toast(errorText(error)),
   })
 
+  const noText = useMutation({
+    mutationFn: (value: boolean) => updateLesson(lesson.id, { no_text: value }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['lesson', lesson.id] }),
+    onError: (error) => toast(errorText(error)),
+  })
+
   return (
     <form
       id={lessonMetaFormId}
@@ -39,6 +45,19 @@ export function LessonMetaForm({ lesson }: { lesson: Lesson }) {
     >
       <TextField label={ru.lessons.name} value={title} onChange={(event) => setTitle(event.target.value)} required />
       <TextArea label={ru.lessons.description} value={description} onChange={(event) => setDescription(event.target.value)} />
+      <label className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={lesson.no_text}
+          disabled={noText.isPending}
+          onChange={(event) => noText.mutate(event.target.checked)}
+        />
+        <span>
+          <span className="font-semibold">{ru.lessons.noText}</span>
+          <span className="mt-0.5 block text-sm text-muted">{ru.lessons.noTextHint}</span>
+        </span>
+      </label>
     </form>
   )
 }

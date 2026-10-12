@@ -6,6 +6,7 @@ import { Button, EmptyState, Spinner } from '../../components/ui'
 import { ru } from '../../i18n/ru'
 import { cx } from '../../lib/cx'
 import type { ExerciseType } from '../../lib/exercises'
+import { PAIRS_EXERCISES } from '../../lib/exercises'
 
 export function ResultsPage() {
   const { id = '' } = useParams()
@@ -99,11 +100,11 @@ function ResultCell({ row }: { row: ResultRow }) {
   if (row.status === 'not_opened') return <span className="text-muted">{ru.results.notOpened}</span>
 
   const tone =
-    row.exercise === 'match_pairs'
+    PAIRS_EXERCISES.has(row.exercise)
       ? movesTone(row.moves_per_pair)
       : percentTone(row.first_try_percent)
   const label =
-    row.exercise === 'match_pairs'
+    PAIRS_EXERCISES.has(row.exercise)
       ? `${row.moves_per_pair ?? '—'} ${ru.results.moves}`
       : `${row.first_try_percent ?? 0}%`
   return (

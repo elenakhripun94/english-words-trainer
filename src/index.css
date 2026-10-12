@@ -71,3 +71,59 @@ input:disabled {
     transition: none !important;
   }
 }
+
+@keyframes float-up {
+  from {
+    top: 100%;
+  }
+  to {
+    top: -45%;
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-8px);
+  }
+  75% {
+    transform: translateX(8px);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Without motion the balloons stand still in the middle, so the exercise still works. */
+.balloon {
+  top: 25%;
+  animation: float-up var(--float-duration, 9s) linear var(--float-delay, 0s) infinite;
+}
+
+.balloon:hover,
+.balloon:focus-visible {
+  animation-play-state: paused;
+}
+
+.shake {
+  animation: shake 0.35s ease-in-out 2;
+}
+
+.pop-in {
+  animation: pop-in 0.25s ease-out;
+}
+
+.silhouette {
+  filter: brightness(0);
+}

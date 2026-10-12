@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Button } from '../../components/ui'
 import { ru } from '../../i18n/ru'
 import type { ExerciseType } from '../../lib/exercises'
 import { normalizeAnswer } from '../../lib/answers'
@@ -7,6 +6,7 @@ import { clearQueue, loadQueue, saveQueue } from '../../lib/playerStorage'
 import { confirmFeedback, isFinished, submitCurrent, type QueueState } from '../../lib/queue'
 import { seededShuffle } from '../../lib/shuffle'
 import type { PlayerItem } from './api'
+import { HomeButton, useNoText } from './kids'
 import { deliverAnswer, deliverComplete } from './sync'
 
 export type FinishStats = {
@@ -24,9 +24,13 @@ export type ShellContext = {
   heard: string | null
   left: number
   total: number
+  /** Counts answered questions. Use it in a key to reset a question that comes back. */
+  turn: number
   submitChoice: (chosenId: string) => void
   submitText: (text: string, almost: boolean) => void
   submitSkip: () => void
+  /** For answers the exercise checks itself: true/false, groups, puzzles. The server has the final say. */
+  submit: (correct: boolean, extra?: { chosenId?: string; text?: string }) => void
   next: () => void
 }
 
@@ -57,6 +61,8 @@ export function ExerciseShell({
   )
   const [almost, setAlmost] = useState(false)
   const [heard, setHeard] = useState<string | null>(null)
+  const [turn, setTurn] = useState(0)
+  const noText = useNoText()
   const reported = useRef(false)
   const started = useRef(performance.now())
   const item = items.find((candidate) => candidate.id === state.queue[0])
@@ -105,6 +111,7 @@ export function ExerciseShell({
     const updated = confirmFeedback(state)
     setAlmost(false)
     setHeard(null)
+    setTurn((value) => value + 1)
     if (isFinished(updated)) {
       if (reported.current) return
       reported.current = true
@@ -125,12 +132,12 @@ export function ExerciseShell({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <Button variant="ghost" onClick={onExit}>
-          ← {ru.player.toList}
-        </Button>
-        <p className="text-sm text-muted">
-          {ru.player.left}: {left}
-        </p>
+        <HomeButton onExit={onExit} />
+        {!noText && (
+          <p className="text-sm text-muted">
+            {ru.player.left}: {left}
+          </p>
+        )}
       </div>
       <div className="mb-4 h-2 overflow-hidden rounded-full bg-line">
         <div className="h-full bg-accent" style={{ width: `${total === 0 ? 0 : ((total - left) / total) * 100}%` }} />
@@ -143,10 +150,12 @@ export function ExerciseShell({
         heard,
         left,
         total,
+        turn,
         submitChoice: (chosenId) => void commit(chosenId === item.id, { chosenId }),
         submitText: (text, isAlmost) =>
           void commit(normalizeAnswer(text) === normalizeAnswer(item.term), { text, almost: isAlmost }),
         submitSkip: () => void commit(false, { skip: true }),
+        submit: (correct, extra) => void commit(correct, { chosenId: extra?.chosenId, text: extra?.text }),
         next,
       })}
     </div>
