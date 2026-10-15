@@ -139,32 +139,35 @@ function ExerciseRow({
       style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }}
       className="rounded-2xl border border-line bg-card p-3"
     >
-      <label className="flex items-start gap-3">
+      <div className="flex items-start gap-2">
+        {/* Outside the label: a label passes its taps to the first control inside, which would be this handle. */}
         {enabled && (
-          <button type="button" className="text-muted" aria-label={ru.items.drag} {...sortable.attributes} {...sortable.listeners}>
+          <button type="button" className="touch-none px-1 text-muted" aria-label={ru.items.drag} {...sortable.attributes} {...sortable.listeners}>
             ⋮⋮
           </button>
         )}
-        <input
-          type="checkbox"
-          className="mt-1"
-          checked={enabled}
-          disabled={!enabled && !available}
-          onChange={(event) => onToggle(event.target.checked)}
-        />
-        <span>
-          <span className="font-semibold">{ru.exercises.names[type]}</span>
-          {PICTURE_EXERCISES.has(type) && (
-            <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">{ru.exercises.noReading}</span>
-          )}
-          <span className="mt-0.5 block text-sm text-muted">{ru.exercises.blurbs[type]}</span>
-          {reason && (
-            <span className="mt-1 block text-sm text-warn">
-              {reason}. {ru.exercises.hidden}
-            </span>
-          )}
-        </span>
-      </label>
+        <label className="flex flex-1 items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-5 w-5 shrink-0"
+            checked={enabled}
+            disabled={!enabled && !available}
+            onChange={(event) => onToggle(event.target.checked)}
+          />
+          <span>
+            <span className="font-semibold">{ru.exercises.names[type]}</span>
+            {PICTURE_EXERCISES.has(type) && (
+              <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">{ru.exercises.noReading}</span>
+            )}
+            <span className="mt-0.5 block text-sm text-muted">{ru.exercises.blurbs[type]}</span>
+            {reason && (
+              <span className="mt-1 block text-sm text-warn">
+                {reason}. {ru.exercises.hidden}
+              </span>
+            )}
+          </span>
+        </label>
+      </div>
       {row && <ExerciseSettingsRow type={type} settings={row.settings} onChange={onSettings} />}
     </article>
   )
