@@ -68,7 +68,8 @@ export function MemorizeExercise({
       {item.imageUrl && <img src={item.imageUrl} alt="" className="mx-auto mt-4 aspect-square w-full max-w-sm rounded-3xl bg-white object-contain" />}
       {!noText && <p className="mt-4 text-center font-serif text-4xl">{item.term}</p>}
       {!noText && item.phonetic && <p className="text-center text-muted">{item.phonetic}</p>}
-      {!noText && item.translation && <p className="text-center text-lg">{item.translation}</p>}
+      {/* The translation stays in the no-text mode too: the teacher wants it seen, a parent can read it aloud. */}
+      {item.translation && <p className={noText ? 'mt-4 text-center text-2xl font-semibold' : 'text-center text-lg'}>{item.translation}</p>}
       {(item.imageAuthor || item.imageLicense) && (
         <p className="mt-2 text-center text-xs text-muted">
           {item.imageAuthor}
