@@ -77,36 +77,7 @@ export function StudentPlayer() {
   return (
     <NoTextContext.Provider value={noText}>
       <PlayerFrame>
-        {screen.name === 'home' && noText && (
-          <div className="text-center">
-            <p className="font-serif text-3xl">{data.studentName}</p>
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {visible.map((exercise) => {
-                const done = Boolean(progressOf(exercise.type)?.completed_at)
-                return (
-                  <button
-                    key={exercise.type}
-                    type="button"
-                    aria-label={ru.exercises.names[exercise.type]}
-                    className={`relative flex aspect-square items-center justify-center rounded-3xl border-4 bg-card text-6xl ${exercise.type === next?.type ? 'border-accent' : 'border-line'}`}
-                    onClick={() => setScreen({ name: 'play', exercise: exercise.type, practice: done })}
-                  >
-                    {EXERCISE_ICONS[exercise.type]}
-                    {done && <span className="absolute right-2 top-2 text-3xl">⭐</span>}
-                  </button>
-                )
-              })}
-            </div>
-            {visible.length > 0 && (
-              <div className="mt-6">
-                <BigButton label={startLabel} onClick={() => setScreen({ name: 'play', exercise: (next ?? visible[0]).type, practice: !next })}>
-                  ▶️
-                </BigButton>
-              </div>
-            )}
-          </div>
-        )}
-        {screen.name === 'home' && !noText && (
+        {screen.name === 'home' && (
           <div>
             <p className="font-serif text-3xl">{data.studentName}</p>
             <h1 className="mt-2 font-serif text-4xl">{ru.player.title}</h1>
@@ -120,8 +91,13 @@ export function StudentPlayer() {
                       className="flex w-full items-center justify-between rounded-2xl border border-line bg-card px-4 py-3 text-left"
                       onClick={() => setScreen({ name: 'play', exercise: exercise.type, practice: done })}
                     >
-                      <span className="font-semibold">{ru.exercises.names[exercise.type]}</span>
-                      <span className="text-sm text-muted">{done ? ru.player.done : ''}</span>
+                      <span className="flex items-center gap-3">
+                        <span className="text-2xl" aria-hidden="true">
+                          {EXERCISE_ICONS[exercise.type]}
+                        </span>
+                        <span className="font-semibold">{ru.exercises.names[exercise.type]}</span>
+                      </span>
+                      <span className="text-sm text-muted">{done ? `⭐ ${ru.player.done}` : ''}</span>
                     </button>
                   </li>
                 )
