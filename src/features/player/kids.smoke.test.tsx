@@ -1,7 +1,9 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PlayerItem } from './api'
+import { NoTextContext } from './kids'
 import { MatchPairsExercise } from './MatchPairsExercise'
+import { MemorizeExercise } from './MemorizeExercise'
 import { PictureChoiceExercise } from './PictureChoiceExercise'
 import { PuzzleExercise } from './PuzzleExercise'
 import { RepeatExercise } from './RepeatExercise'
@@ -28,7 +30,7 @@ const items: PlayerItem[] = ['apple', 'dog', 'cat', 'ball', 'car'].map((term, in
   phonetic: null,
   audioUrl: null,
   imageUrl: `https://example.test/${term}.png`,
-  translation: null,
+  translation: `перевод ${term}`,
   category: index === 0 ? 'food' : index < 3 ? 'animals' : null,
   imageAuthor: null,
   imageLicense: null,
@@ -85,5 +87,15 @@ describe('picture exercises render and accept an answer', () => {
     const cards = screen.getAllByRole('button', { pressed: false })
     expect(cards.length).toBeGreaterThanOrEqual(8)
     fireEvent.click(cards[0])
+  })
+
+  it.each([false, true])('memorize shows the translation (no-text mode: %s)', (noText) => {
+    render(
+      <NoTextContext.Provider value={noText}>
+        <MemorizeExercise {...common} />
+      </NoTextContext.Provider>,
+    )
+    expect(screen.getByText(/^перевод /)).toBeTruthy()
+    expect(Boolean(screen.queryByText(/^(apple|dog|cat|ball|car)$/))).toBe(!noText)
   })
 })
